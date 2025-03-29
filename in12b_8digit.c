@@ -217,10 +217,11 @@ void bte_init(){
     uart_init(UART_ID, BAUD_RATE);
     gpio_set_function(TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(RX_PIN, GPIO_FUNC_UART);
+    stdio_uart_init_full(UART_ID, BAUD_RATE, 0, 1);
 }
 
 void clock_cycle(){
-    
+
     while (true){
         sleep_ms(10);
         display[7] += 1;
@@ -262,20 +263,12 @@ int main() {
     gpio_init(25);
     gpio_set_dir(25, GPIO_OUT);
 
-    stdio_init_all();
     bte_init();
 
     multicore_launch_core1(core1_entry);
     converter200V_init();
     converter200V_enable();
 
-    display[0] = 1;
-    display[1] = 5;
-    display[2] = 4;
-    display[3] = 0;
-    display[5] = 0;
-    display[6] = 0;
-    display[7] = 0;
 
     
     return 0;

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 
 # initialize the SDK based on PICO_SDK_PATH
 # note: this must happen before project()
-include(pico_sdk_import.cmake)
+include(pico_sdk_import.cmake) 
 
 project(IN12B-8DIGIT)
 
@@ -22,8 +22,8 @@ target_link_libraries(in12b_8digit
     hardware_uart)
 
 # enable usb output, disable uart output
-#pico_enable_stdio_usb(in12b_8digit 0)
-#pico_enable_stdio_uart(in12b_8digit 1)
+pico_enable_stdio_usb(in12b_8digit 0)
+pico_enable_stdio_uart(in12b_8digit 1)
 
 # create map/bin/hex/uf2 file in addition to ELF.
 pico_add_extra_outputs(in12b_8digit)
