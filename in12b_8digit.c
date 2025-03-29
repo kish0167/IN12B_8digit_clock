@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include "pico/multicore.h"
 #include "hardware/uart.h"
+#include "hardware/irq.h"
 
 
 #define UART_ID uart0
@@ -40,13 +41,14 @@ int bcdBmap[10][4] = {
     {0, 1, 0, 0}};
 uint tx = 0;
 uint rx = 1;    
+uint conv200V_shutdown = 13;
 
 
 
 // midcore data
-int display[8] = {0,0,0,0,0,0,0,0};
-int dots[8] = {0,0,0,0,0,0,0,0};
-bool cycle_mode = false; // false - 8-cycle, true - 4-cycle
+volatile int display[8] = {0,0,0,0,0,0,0,0};
+volatile int dots[8] = {0,0,0,0,0,0,0,0};
+volatile bool cycle_mode = false; // false - 8-cycle, true - 4-cycle
 
 
 
@@ -190,17 +192,17 @@ void core1_entry() {
 ////////////////////////
 
 void converter200V_init(){
-    gpio_init(13);
-    gpio_set_dir(13, GPIO_OUT);
-    gpio_put(13,1);
+    gpio_init(conv200V_shutdown);
+    gpio_set_dir(conv200V_shutdown, GPIO_OUT);
+    gpio_put(conv200V_shutdown,1);
 }
 
 void converter200V_shutdown(){
-    gpio_put(13,1);
+    gpio_put(conv200V_shutdown,1);
 }
 
 void converter200V_enable(){
-    gpio_put(13,0);
+    gpio_put(conv200V_shutdown,0);
 }
 
 void display_int(int num){
@@ -213,11 +215,32 @@ void display_int(int num){
     }
 }
 
+#define BUF_SIZE 256
+uint8_t rx_buf[BUF_SIZE];
+volatile uint16_t rx_count = 0;
+
+void on_uart_rx() {
+    while (uart_is_readable(UART_ID)) {
+        uint8_t ch = uart_getc(UART_ID);
+        
+        // Store received character in buffer
+        if (rx_count < BUF_SIZE) {
+            rx_buf[rx_count++] = ch;
+        }
+
+        uart_putc(UART_ID, ch);
+    }
+}
+
 void bte_init(){
     uart_init(UART_ID, BAUD_RATE);
     gpio_set_function(TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(RX_PIN, GPIO_FUNC_UART);
-    stdio_uart_init_full(UART_ID, BAUD_RATE, 0, 1);
+    uart_set_format(UART_ID, 8, 1, UART_PARITY_NONE);
+
+    irq_set_exclusive_handler(UART0_IRQ, on_uart_rx);
+    irq_set_enabled(UART0_IRQ, true);
+    uart_set_irq_enables(UART_ID, true, false);
 }
 
 void clock_cycle(){
@@ -258,8 +281,24 @@ void clock_cycle(){
     }
 }
 
+bool rx_buf_end_check(){
+    if (rx_count < 13)
+        return false;
+    if (rx_buf[rx_count-4] != 'e')
+        return false;
+    if (rx_buf[rx_count-3] != 'n')
+        return false;        
+    if (rx_buf[rx_count-2] != 'd')
+        return false;
+    if (rx_buf[rx_count-1] != '.')
+        return false;
+
+    return true;
+}
+
 int main() {
 
+    stdio_init_all();
     gpio_init(25);
     gpio_set_dir(25, GPIO_OUT);
 
@@ -269,7 +308,24 @@ int main() {
     converter200V_init();
     converter200V_enable();
 
+    while (1) {
 
+        if (rx_buf_end_check()) {
+            for (int i = 0; i < 8; i++)
+                display[i] = rx_buf[rx_count + i - 13] - '0';
+
+
+            uint8_t mask = 0x80;    
+            for (int i = 0; i < 8; i++){
+                dots[i] = mask & rx_buf[rx_count - 5];
+                mask >> 1;
+            }
+            
+            rx_count = 0;
+        }
+
+        tight_loop_contents();
+    }
     
     return 0;
 }
