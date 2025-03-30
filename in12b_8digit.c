@@ -15,8 +15,8 @@
 uint lamps[4] = {3,6,7,8};
 uint bcdA[4] = {9,10,11,12};
 uint bcdB[4] = {14,15,28,29};
-uint dotA = 2;
-uint dotB = 5;
+uint dotA = 5;
+uint dotB = 2;
 int bcdAmap[10][4] = {
     {1, 0, 1, 0},
     {0, 0, 1, 0},
@@ -62,10 +62,10 @@ const int cycle_4_delay2_us = 500;
 void bcdA_set(int num){
 
     if(num < 0 || num > 9){
-        gpio_put(bcdA[0], 1);
+        gpio_put(bcdA[0], 0);
         gpio_put(bcdA[1], 1);
         gpio_put(bcdA[2], 1);
-        gpio_put(bcdA[3], 1);
+        gpio_put(bcdA[3], 0);
         return;
     }
 
@@ -95,8 +95,10 @@ void bcdB_set(int num){
 void cycle_8(){
 
     bcdA_set(-1);
+    gpio_put(dotA, 0);
 
     gpio_put(lamps[3], 0);
+    gpio_put(dotB, 0);
     sleep_us(cycle_8_delay2_us);
     gpio_put(lamps[0], 1);
     gpio_put(dotB, dots[0]);
@@ -105,6 +107,7 @@ void cycle_8(){
 
     for (int i = 0; i < 3; i++){
         gpio_put(lamps[i], 0);
+        gpio_put(dotB, 0);
         sleep_us(cycle_8_delay2_us);
         gpio_put(lamps[i+1], 1);
         gpio_put(dotB, dots[i+1]);
@@ -113,8 +116,10 @@ void cycle_8(){
     }
 
     bcdB_set(-1);
+    gpio_put(dotB, 0);
 
     gpio_put(lamps[3], 0);
+    gpio_put(dotA, 0);
     sleep_us(cycle_8_delay2_us);
     gpio_put(lamps[0], 1);
     gpio_put(dotA, dots[4]);
@@ -123,6 +128,7 @@ void cycle_8(){
 
     for (int i = 0; i < 3; i++){
         gpio_put(lamps[i], 0);
+        gpio_put(dotA, 0);
         sleep_us(cycle_8_delay2_us);
         gpio_put(lamps[i+1], 1);
         gpio_put(dotA, dots[i+5]);
@@ -144,6 +150,8 @@ void cycle_4(){
 
     for (int i = 0; i < 3; i++){
         gpio_put(lamps[i], 0);
+        gpio_put(dotB, 0);
+        gpio_put(dotA, 0);
         sleep_us(cycle_4_delay2_us);
         gpio_put(lamps[i+1], 1);
         gpio_put(dotB, dots[i+1]);
@@ -223,12 +231,9 @@ void on_uart_rx() {
     while (uart_is_readable(UART_ID)) {
         uint8_t ch = uart_getc(UART_ID);
         
-        // Store received character in buffer
         if (rx_count < BUF_SIZE) {
             rx_buf[rx_count++] = ch;
         }
-
-        uart_putc(UART_ID, ch);
     }
 }
 
@@ -282,15 +287,15 @@ void clock_cycle(){
 }
 
 bool rx_buf_end_check(){
-    if (rx_count < 13)
+    if (rx_count < 16)
         return false;
-    if (rx_buf[rx_count-4] != 'e')
+    if (rx_buf[rx_count-6] != 'e')
         return false;
-    if (rx_buf[rx_count-3] != 'n')
+    if (rx_buf[rx_count-5] != 'n')
         return false;        
-    if (rx_buf[rx_count-2] != 'd')
+    if (rx_buf[rx_count-4] != 'd')
         return false;
-    if (rx_buf[rx_count-1] != '.')
+    if (rx_buf[rx_count-3] != '.')
         return false;
 
     return true;
@@ -310,19 +315,26 @@ int main() {
 
     while (1) {
 
-        if (rx_buf_end_check()) {
-            for (int i = 0; i < 8; i++)
-                display[i] = rx_buf[rx_count + i - 13] - '0';
-
-
-            uint8_t mask = 0x80;    
-            for (int i = 0; i < 8; i++){
-                dots[i] = mask & rx_buf[rx_count - 5];
-                mask >> 1;
-            }
-            
-            rx_count = 0;
+        if (!rx_buf_end_check()){
+            tight_loop_contents();
+            continue;
         }
+
+        for (int i = 0; i < 8; i++)
+            display[i] = rx_buf[rx_count + i - 16] - '0';
+
+        uint8_t mask = 0x08;    
+        for (int i = 0; i < 4; i++){
+            dots[i] = (mask & rx_buf[rx_count - 8]) != 0 ? 1 : 0;
+            mask = mask >> 1;
+        }
+        mask = 0x08;   
+        for (int i = 4; i < 8; i++){
+            dots[i] = (mask & rx_buf[rx_count - 7]) != 0 ? 1 : 0;
+            mask = mask >> 1;
+        }
+
+        rx_count = 0;
 
         tight_loop_contents();
     }
