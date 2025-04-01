@@ -288,7 +288,14 @@ bool rx_buf_end_check(){
     return true;
 }
 
+uint irq_counter = 0;
+
 void gpio_callback(uint gpio, uint32_t events) {    
+
+    if (irq_counter <= 10)
+        return;
+    irq_counter = 0;
+
     if (gpio != button) 
         return;
 
@@ -310,6 +317,103 @@ void button_init(){
         &gpio_callback);
 }
 
+void do_clk0(){
+    dots[0] = 0;
+    dots[1] = 0;
+    dots[2] = 1;
+    dots[3] = 0;
+    dots[4] = 1;
+    dots[5] = 0;
+    dots[6] = 1;
+    dots[7] = 0;
+
+    display[7] ++;
+
+    display[6] += display[7] / 10;
+    display[7] %= 10;
+
+    display[5] += display[6] / 10;
+    display[6] %= 10;
+
+    display[4] += display[5] / 10;
+    display[5] %= 10;
+
+    display[3] += display[4] / 6;
+    display[4] %= 6;
+
+    display[2] += display[3] / 10;
+    display[3] %= 10;
+
+    display[1] += display[2] / 6;
+    display[2] %= 6;
+
+    display[0] += display[1] / 10;
+    display[1] %= 10;
+
+    if (display[0] == 2 && display[1] == 4) {
+        display[0] = 0;
+        display[1] = 0;
+        display[2] = 0;
+        display[3] = 0;
+        display[4] = 0;
+        display[5] = 0;
+        display[6] = 0;
+        display[7] = 0;
+    }
+}
+
+int clk1_counter = 0;
+
+void do_clk1(){
+    display[2] = -1;
+    display[5] = -1;
+    dots[0] = 0;
+    dots[1] = 0;
+    dots[2] = 1;
+    dots[3] = 0;
+    dots[4] = 0;
+    dots[5] = 1;
+    dots[6] = 0;
+    dots[7] = 0;
+
+    display[7] += clk1_counter / 100;
+    clk1_counter %= 100;
+
+    display[6] += display[7] / 10;
+    display[7] %= 10;
+
+    display[4] += display[6] / 6;
+    display[6] %= 6;
+
+    display[3] += display[4] / 10;
+    display[4] %= 10;
+
+    display[1] += display[3] / 6;
+    display[3] %= 6;
+
+    display[0] += display[1] / 10;
+    display[1] %= 10;
+
+    if (display[0] == 2 && display[1] == 4) {
+        display[0] = 0;
+        display[1] = 0;
+        display[3] = 0;
+        display[4] = 0;
+        display[6] = 0;
+        display[7] = 0;
+    }
+
+    clk1_counter ++;
+}
+
+void do_cntd(){
+
+}
+
+void do_dvrg(){
+
+}
+
 int main() {
 
     stdio_init_all();
@@ -325,7 +429,11 @@ int main() {
 
     while (1) {
 
+        irq_counter ++;
+
         if (!rx_buf_end_check()){
+            do_clk0();
+            sleep_ms(10);
             tight_loop_contents();
             continue;
         }
