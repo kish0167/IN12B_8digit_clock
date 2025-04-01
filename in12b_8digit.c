@@ -3,6 +3,7 @@
 #include "pico/multicore.h"
 #include "hardware/uart.h"
 #include "hardware/irq.h"
+#include "hardware/gpio.h"
 
 
 #define UART_ID uart0
@@ -42,6 +43,7 @@ int bcdBmap[10][4] = {
 uint tx = 0;
 uint rx = 1;    
 uint conv200V_shutdown = 13;
+uint button = 4;
 
 
 
@@ -51,12 +53,14 @@ volatile int dots[8] = {0,0,0,0,0,0,0,0};
 volatile bool cycle_mode = false; // false - 8-cycle, true - 4-cycle
 
 
+// states
+bool enabled = true;
 
 // CORE1 FUNCTIONS //
 
-const int cycle_8_delay1_us = 2000;
+const int cycle_8_delay1_us = 1650;
 const int cycle_8_delay2_us = 400;
-const int cycle_4_delay1_us = 4000;
+const int cycle_4_delay1_us = 1650;
 const int cycle_4_delay2_us = 500;
 
 void bcdA_set(int num){
@@ -94,47 +98,31 @@ void bcdB_set(int num){
 
 void cycle_8(){
 
-    bcdA_set(-1);
-    gpio_put(dotA, 0);
-
-    gpio_put(lamps[3], 0);
-    gpio_put(dotB, 0);
-    sleep_us(cycle_8_delay2_us);
-    gpio_put(lamps[0], 1);
-    gpio_put(dotB, dots[0]);
-    bcdB_set(display[0]);
-    sleep_us(cycle_8_delay1_us);
-
-    for (int i = 0; i < 3; i++){
-        gpio_put(lamps[i], 0);
+    for (int i = 0; i < 4; i++){
         gpio_put(dotB, 0);
         sleep_us(cycle_8_delay2_us);
-        gpio_put(lamps[i+1], 1);
-        gpio_put(dotB, dots[i+1]);
-        bcdB_set(display[i+1]);
+        gpio_put(lamps[i], (display[i] < 10 && display[i] > -1 || dots[i] != 0) ? 1 : 0);
+        gpio_put(dotB, dots[i]);
+        bcdB_set(display[i]);
         sleep_us(cycle_8_delay1_us);
+        gpio_put(lamps[i], 0);
     }
 
     bcdB_set(-1);
     gpio_put(dotB, 0);
 
-    gpio_put(lamps[3], 0);
-    gpio_put(dotA, 0);
-    sleep_us(cycle_8_delay2_us);
-    gpio_put(lamps[0], 1);
-    gpio_put(dotA, dots[4]);
-    bcdA_set(display[4]);
-    sleep_us(cycle_8_delay1_us);
-
-    for (int i = 0; i < 3; i++){
-        gpio_put(lamps[i], 0);
+    for (int i = 0; i < 4; i++){
         gpio_put(dotA, 0);
         sleep_us(cycle_8_delay2_us);
-        gpio_put(lamps[i+1], 1);
-        gpio_put(dotA, dots[i+5]);
-        bcdA_set(display[i+5]);
+        gpio_put(lamps[i], (display[i+4] < 10 && display[i+4] > -1 || dots[i+4] != 0) ? 1 : 0);
+        gpio_put(dotA, dots[i+4]);
+        bcdA_set(display[i+4]);
         sleep_us(cycle_8_delay1_us);
+        gpio_put(lamps[i], 0);
     }
+
+    bcdA_set(-1);
+    gpio_put(dotA, 0);
 }
 
 void cycle_4(){
@@ -187,7 +175,6 @@ void bcd_init_pins(){
 void core1_entry() {
 
     bcd_init_pins();
-
     while(true){
         if (cycle_mode){
             cycle_4();
@@ -301,6 +288,28 @@ bool rx_buf_end_check(){
     return true;
 }
 
+void gpio_callback(uint gpio, uint32_t events) {    
+    if (gpio != button) 
+        return;
+
+    enabled = !enabled;
+    
+    if (enabled)
+        converter200V_enable();
+    else
+        converter200V_shutdown();
+}
+
+void button_init(){
+    gpio_init(button);
+    gpio_set_dir(button, GPIO_IN);
+    gpio_pull_up(button);
+    gpio_set_irq_enabled_with_callback(button, 
+        GPIO_IRQ_EDGE_FALL, 
+        true, 
+        &gpio_callback);
+}
+
 int main() {
 
     stdio_init_all();
@@ -308,6 +317,7 @@ int main() {
     gpio_set_dir(25, GPIO_OUT);
 
     bte_init();
+    button_init();
 
     multicore_launch_core1(core1_entry);
     converter200V_init();
